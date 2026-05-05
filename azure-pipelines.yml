@@ -13,6 +13,9 @@ variables:
   buildConfiguration: "Release"
   dotnetVersion: "10.x"
   appName: "pedidosapi"
+  appVersion: ${{ replace(variables['Build.SourceBranchName'], 'v', '') }}
+  # Quando trigger é tag v1.1.0 → appVersion = "1.1.0"
+  # O replace remove o "v" inicial para ficar no formato SemVer puro
 
 stages:
   - stage: CI
@@ -41,7 +44,6 @@ stages:
               arguments: >
                 --configuration $(buildConfiguration)
                 --no-restore
-                -p:Version=$(appVersion)
 
           - task: DotNetCoreCLI@2
             displayName: "4. Testes unitários"
