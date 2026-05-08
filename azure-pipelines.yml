@@ -12,7 +12,6 @@ pool:
 variables:
   buildConfiguration: "Release"
   dotnetVersion: "10.x"
-  #appName: 'pedidosapi'
   appVersion: ${{ replace(variables['Build.SourceBranchName'], 'v', '') }}
   # Quando trigger é tag v1.1.0 → appVersion = "1.1.0"
   # O replace remove o "v" inicial para ficar no formato SemVer puro
@@ -133,11 +132,11 @@ stages:
                 - script: |
                     echo "================================================"
                     echo " Smoke Test — PedidosApi"
-                    echo " URL: https://$(APP_NAME)-e3crf4atc5g9d9cn.brazilsouth-01.azurewebsites.net"
+                    echo " URL: https://$(APP_NAME)-ggh7gchhcrcpghhs.chilecentral-01.azurewebsites.net"
                     echo "================================================"
 
                     STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                      https://$(APP_NAME)-e3crf4atc5g9d9cn.brazilsouth-01.azurewebsites.net/pedidos)
+                      https://$(APP_NAME)-ggh7gchhcrcpghhs.chilecentral-01.azurewebsites.net/pedidos)
                     echo "Status HTTP: $STATUS"
 
                     if [ "$STATUS" != "200" ]; then
@@ -154,6 +153,6 @@ stages:
                     echo " Deploy concluído com sucesso!"
                     echo " Versão  : $(Build.SourceBranchName)"
                     echo " Build   : $(Build.BuildNumber)"
-                    echo " URL     : https://$(APP_NAME)-e3crf4atc5g9d9cn.brazilsouth-01.azurewebsites.net"
+                    echo " URL     : https://$(APP_NAME)-ggh7gchhcrcpghhs.chilecentral-01.azurewebsites.net"
                     echo "================================================"
                   displayName: "5. Resumo do deploy"
