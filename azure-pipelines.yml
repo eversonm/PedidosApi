@@ -12,7 +12,7 @@ pool:
 variables:
   buildConfiguration: "Release"
   dotnetVersion: "10.x"
-  appName: "pedidosapi"
+  #appName: 'pedidosapi'
   appVersion: ${{ replace(variables['Build.SourceBranchName'], 'v', '') }}
   # Quando trigger é tag v1.1.0 → appVersion = "1.1.0"
   # O replace remove o "v" inicial para ficar no formato SemVer puro
@@ -81,22 +81,79 @@ stages:
               artifactName: drop
               publishLocation: "Container"
 
+  # ──────────────────────────────────────────────────────────────
+  # STAGE CD — Deploy no Azure App Service
+  # Só executa em tag v*.*.* após CI verde
+  # ──────────────────────────────────────────────────────────────
   - stage: CD
-    displayName: "CD"
+    displayName: "CD — Deploy Azure App Service"
     dependsOn: CI
     condition: >
-      and(succeeded(),
-      startsWith(variables['Build.SourceBranch'],
-      'refs/tags/v'))
+      and(
+        succeeded(),
+        startsWith(variables['Build.SourceBranch'], 'refs/tags/v')
+      )
+
     jobs:
-      - job: Deploy
+      # deployment (não job) habilita o uso de environments
+      # e registra histórico de deploys no Azure DevOps
+      - deployment: DeployProducao
         displayName: "Deploy no App Service"
-        steps:
-          - script: |
-              echo "================================================"
-              echo " Deploy versão : $(appVersion)"
-              echo " Tag           : $(Build.SourceBranchName)"
-              echo " Build         : $(Build.BuildNumber)"
-              echo "================================================"
-              echo "Deploy será configurado na Aula 4"
-            displayName: "1. Resumo do deploy"
+        environment: "stable"
+
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # Baixa o artefato gerado pelo stage CI
+                - download: current
+                  artifact: drop
+                  displayName: "1. Baixar artefato do CI"
+
+                # Deploy no Azure App Service
+                # azureSubscription: nome da Service Connection criada no pré-requisito 2
+                # appName: nome do App Service criado no pré-requisito 1
+                - task: AzureWebApp@1
+                  displayName: "2. Deploy no App Service"
+                  inputs:
+                    azureSubscription: "sc-azure-pedidosapi"
+                    appType: "webApp"
+                    appName: "$(APP_NAME)"
+                    package: "$(Pipeline.Workspace)/drop/**/*.zip"
+                    deploymentMethod: "auto"
+
+                # Aguarda o App Service reiniciar antes do smoke test
+                # (necessário especialmente no Free Tier F1)
+                - script: |
+                    echo "Aguardando App Service reiniciar..."
+                    sleep 20
+                  displayName: "3. Aguardar reinicialização"
+
+                # Smoke test: verifica se a API está respondendo
+                - script: |
+                    echo "================================================"
+                    echo " Smoke Test — PedidosApi"
+                    echo " URL: https://$(APP_NAME)-e3crf4atc5g9d9cn.brazilsouth-01.azurewebsites.net"
+                    echo "================================================"
+
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                      https://$(APP_NAME)-e3crf4atc5g9d9cn.brazilsouth-01.azurewebsites.net/pedidos)
+                    echo "Status HTTP: $STATUS"
+
+                    if [ "$STATUS" != "200" ]; then
+                      echo "ERRO: API retornou status $STATUS — deploy com falha"
+                      exit 1
+                    fi
+
+                    echo "Smoke test passou — API respondendo com 200 OK"
+                  displayName: "4. Smoke test: GET /pedidos"
+
+                # Resumo do deploy
+                - script: |
+                    echo "================================================"
+                    echo " Deploy concluído com sucesso!"
+                    echo " Versão  : $(Build.SourceBranchName)"
+                    echo " Build   : $(Build.BuildNumber)"
+                    echo " URL     : https://$(APP_NAME)-e3crf4atc5g9d9cn.brazilsouth-01.azurewebsites.net"
+                    echo "================================================"
+                  displayName: "5. Resumo do deploy"
