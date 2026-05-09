@@ -1,7 +1,32 @@
+# ============================================================
+#  PedidosApi — Pipeline CI/CD com Environments
+#  Alpha → Beta → RC → Stable
+#
+#  Triggers por tag SemVer:
+#    v*.*.*-alpha.*  → CI + Deploy Alpha
+#    v*.*.*-beta.*   → CI + Deploy Beta
+#    v*.*.*-rc.*     → CI + Deploy RC (com aprovação manual)
+#    v*.*.*          → CI + Deploy Stable (com aprovação manual)
+#
+#  Exemplos de tags:
+#    git tag v1.1.0-alpha.1   → sobe para Alpha
+#    git tag v1.1.0-beta.1    → sobe para Beta
+#    git tag v1.1.0-rc.1      → sobe para RC  (aguarda aprovação)
+#    git tag v1.1.0            → sobe para Stable (aguarda aprovação)
+#
+#  Environments no Azure DevOps:
+#    Pipelines → Environments → New:
+#      alpha   (sem aprovação — automático)
+#      beta    (sem aprovação — automático)
+#      rc      (aprovação: tech lead)
+#      stable  (aprovação: tech lead + PM)
+# ============================================================
 trigger:
   branches:
     include:
       - main
+      - "feat/*"
+      - "fix/*"
   tags:
     include:
       - "v*.*.*"
@@ -12,16 +37,18 @@ pool:
 variables:
   buildConfiguration: "Release"
   dotnetVersion: "10.x"
-  appVersion: ${{ replace(variables['Build.SourceBranchName'], 'v', '') }}
-  # Quando trigger é tag v1.1.0 → appVersion = "1.1.0"
-  # O replace remove o "v" inicial para ficar no formato SemVer puro
+  APP_NAME_ALPHA: "pedidos-api-devops-alpha"
+  APP_NAME_BETA: "pedidos-api-devops-beta"
+  APP_NAME_RC: "pedidos-api-devops-rc"
+  APP_NAME_STABLE: "pedidos-api-devops"
 
 stages:
+  # ── CI — roda em tudo ──────────────────────────────────────
   - stage: CI
-    displayName: "CI"
+    displayName: "CI — Build, Test e Artefato"
     jobs:
       - job: BuildAndTest
-        displayName: "Build, Test e Artefato"
+        displayName: "Build, Test e Publicar"
         steps:
           - task: UseDotNet@2
             displayName: "1. Instalar .NET SDK $(dotnetVersion)"
@@ -29,23 +56,35 @@ stages:
               version: "$(dotnetVersion)"
               includePreviewVersions: true
 
+          - script: |
+              BRANCH="$(Build.SourceBranch)"
+              if [[ "$BRANCH" == refs/tags/v* ]]; then
+                VERSION="${BRANCH#refs/tags/v}"
+              else
+                VERSION="0.0.0-$(Build.BuildNumber)"
+              fi
+              echo "##vso[task.setvariable variable=appVersion]$VERSION"
+              echo "Versão calculada: $VERSION"
+            displayName: "2. Calcular versão SemVer"
+
           - task: DotNetCoreCLI@2
-            displayName: "2. Restaurar pacotes NuGet"
+            displayName: "3. Restaurar pacotes NuGet"
             inputs:
               command: restore
               projects: "**/*.csproj"
 
           - task: DotNetCoreCLI@2
-            displayName: "3. Build — versão $(appVersion)"
+            displayName: "4. Build"
             inputs:
               command: build
               projects: "**/*.csproj"
               arguments: >
                 --configuration $(buildConfiguration)
                 --no-restore
+                -p:Version=$(appVersion)
 
           - task: DotNetCoreCLI@2
-            displayName: "4. Testes unitários"
+            displayName: "5. Testes unitários"
             inputs:
               command: test
               projects: "**/*Tests*.csproj"
@@ -54,14 +93,6 @@ stages:
                 --no-build
                 --collect:"XPlat Code Coverage"
               publishTestResults: true
-
-          - script: |
-              echo "================================================"
-              echo " Versão do build : $(appVersion)"
-              echo " Branch/Tag      : $(Build.SourceBranchName)"
-              echo " Build número    : $(Build.BuildNumber)"
-              echo "================================================"
-            displayName: "5. Exibir versão SemVer"
 
           - task: DotNetCoreCLI@2
             displayName: "6. Publicar aplicação"
@@ -74,85 +105,171 @@ stages:
               zipAfterPublish: true
 
           - task: PublishBuildArtifacts@1
-            displayName: "7. Salvar artefato no Azure Artifacts"
+            displayName: "7. Salvar artefato"
             inputs:
               pathToPublish: "$(Build.ArtifactStagingDirectory)"
               artifactName: drop
               publishLocation: "Container"
 
-  # ──────────────────────────────────────────────────────────────
-  # STAGE CD — Deploy no Azure App Service
-  # Só executa em tag v*.*.* após CI verde
-  # ──────────────────────────────────────────────────────────────
-  - stage: CD
-    displayName: "CD — Deploy Azure App Service"
+  # ── ALPHA — merge na main ──────────────────────────────────
+  - stage: DeployAlpha
+    displayName: "Alpha — Deploy automático"
     dependsOn: CI
     condition: >
       and(
         succeeded(),
-        startsWith(variables['Build.SourceBranch'], 'refs/tags/v')
+        eq(variables['Build.SourceBranch'], 'refs/heads/main')
       )
-
     jobs:
-      # deployment (não job) habilita o uso de environments
-      # e registra histórico de deploys no Azure DevOps
-      - deployment: DeployProducao
-        displayName: "Deploy no App Service"
-        environment: "stable"
-
+      - deployment: DeployAlpha
+        displayName: "Deploy Alpha"
+        environment: "alpha"
         strategy:
           runOnce:
             deploy:
               steps:
-                # Baixa o artefato gerado pelo stage CI
                 - download: current
                   artifact: drop
-                  displayName: "1. Baixar artefato do CI"
+                  displayName: "1. Baixar artefato"
 
-                # Deploy no Azure App Service
-                # azureSubscription: nome da Service Connection criada no pré-requisito 2
-                # appName: nome do App Service criado no pré-requisito 1
                 - task: AzureWebApp@1
-                  displayName: "2. Deploy no App Service"
+                  displayName: "2. Deploy Alpha"
                   inputs:
                     azureSubscription: "sc-azure-pedidosapi"
                     appType: "webApp"
-                    appName: "$(APP_NAME)"
+                    appName: "$(APP_NAME_ALPHA)"
                     package: "$(Pipeline.Workspace)/drop/**/*.zip"
                     deploymentMethod: "auto"
 
-                # Aguarda o App Service reiniciar antes do smoke test
-                # (necessário especialmente no Free Tier F1)
                 - script: |
-                    echo "Aguardando App Service reiniciar..."
                     sleep 20
-                  displayName: "3. Aguardar reinicialização"
-
-                # Smoke test: verifica se a API está respondendo
-                - script: |
-                    echo "================================================"
-                    echo " Smoke Test — PedidosApi"
-                    echo " URL: https://$(APP_NAME)-ggh7gchhcrcpghhs.chilecentral-01.azurewebsites.net"
-                    echo "================================================"
-
                     STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                      https://$(APP_NAME)-ggh7gchhcrcpghhs.chilecentral-01.azurewebsites.net/pedidos)
-                    echo "Status HTTP: $STATUS"
+                      https://$(APP_NAME_ALPHA)-caexgrh8ayamcafs.chilecentral-01.azurewebsites.net/pedidos)
+                    echo "Smoke test Alpha: $STATUS"
+                    [ "$STATUS" = "200" ] && echo "OK" || exit 1
+                  displayName: "3. Smoke test Alpha"
 
-                    if [ "$STATUS" != "200" ]; then
-                      echo "ERRO: API retornou status $STATUS — deploy com falha"
-                      exit 1
-                    fi
+  # ── BETA — tag v*-beta.* ───────────────────────────────────
+  - stage: DeployBeta
+    displayName: "Beta — Deploy automático"
+    dependsOn: CI
+    condition: >
+      and(
+        succeeded(),
+        contains(variables['Build.SourceBranch'], '-beta.')
+      )
+    jobs:
+      - deployment: DeployBeta
+        displayName: "Deploy Beta"
+        environment: "beta"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: drop
+                  displayName: "1. Baixar artefato"
 
-                    echo "Smoke test passou — API respondendo com 200 OK"
-                  displayName: "4. Smoke test: GET /pedidos"
+                - task: AzureWebApp@1
+                  displayName: "2. Deploy Beta"
+                  inputs:
+                    azureSubscription: "sc-azure-pedidosapi"
+                    appType: "webApp"
+                    appName: "$(APP_NAME_BETA)"
+                    package: "$(Pipeline.Workspace)/drop/**/*.zip"
+                    deploymentMethod: "auto"
 
-                # Resumo do deploy
+                - script: |
+                    sleep 20
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                      https://$(APP_NAME_BETA)-esgyencccbcbbgdz.chilecentral-01.azurewebsites.net/pedidos)
+                    echo "Smoke test Beta: $STATUS"
+                    [ "$STATUS" = "200" ] && echo "OK" || exit 1
+                  displayName: "3. Smoke test Beta"
+
+  # ── RC — tag v*-rc.* (aprovação: Tech Lead) ───────────────
+  - stage: DeployRC
+    displayName: "RC — Aprovação obrigatória"
+    dependsOn: CI
+    condition: >
+      and(
+        succeeded(),
+        contains(variables['Build.SourceBranch'], '-rc.')
+      )
+    jobs:
+      - deployment: DeployRC
+        displayName: "Deploy RC"
+        environment: "rc"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: drop
+                  displayName: "1. Baixar artefato"
+
+                - task: AzureWebApp@1
+                  displayName: "2. Deploy RC"
+                  inputs:
+                    azureSubscription: "sc-azure-pedidosapi"
+                    appType: "webApp"
+                    appName: "$(APP_NAME_RC)"
+                    package: "$(Pipeline.Workspace)/drop/**/*.zip"
+                    deploymentMethod: "auto"
+
+                - script: |
+                    sleep 20
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                      https://$(APP_NAME_RC)-dggtdgg5gqasgmf4.chilecentral-01.azurewebsites.net/pedidos)
+                    echo "Smoke test RC: $STATUS"
+                    [ "$STATUS" = "200" ] && echo "OK" || exit 1
+                  displayName: "3. Smoke test RC"
+
+  # ── STABLE — tag v*.*.* sem sufixo (aprovação: TL + PM) ───
+  - stage: DeployStable
+    displayName: "Stable — Produção (aprovação dupla)"
+    dependsOn: CI
+    condition: >
+      and(
+        succeeded(),
+        startsWith(variables['Build.SourceBranch'], 'refs/tags/v'),
+        not(contains(variables['Build.SourceBranch'], '-alpha.')),
+        not(contains(variables['Build.SourceBranch'], '-beta.')),
+        not(contains(variables['Build.SourceBranch'], '-rc.'))
+      )
+    jobs:
+      - deployment: DeployStable
+        displayName: "Deploy Stable"
+        environment: "stable"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: drop
+                  displayName: "1. Baixar artefato"
+
+                - task: AzureWebApp@1
+                  displayName: "2. Deploy Stable"
+                  inputs:
+                    azureSubscription: "sc-azure-pedidosapi"
+                    appType: "webApp"
+                    appName: "$(APP_NAME_STABLE)"
+                    package: "$(Pipeline.Workspace)/drop/**/*.zip"
+                    deploymentMethod: "auto"
+
+                - script: |
+                    sleep 25
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                      https://$(APP_NAME_STABLE)-ggh7gchhcrcpghhs.chilecentral-01.azurewebsites.net/pedidos)
+                    echo "Smoke test Stable: $STATUS"
+                    [ "$STATUS" = "200" ] && echo "OK — produção no ar!" || exit 1
+                  displayName: "3. Smoke test Stable"
+
                 - script: |
                     echo "================================================"
-                    echo " Deploy concluído com sucesso!"
-                    echo " Versão  : $(Build.SourceBranchName)"
-                    echo " Build   : $(Build.BuildNumber)"
-                    echo " URL     : https://$(APP_NAME)-ggh7gchhcrcpghhs.chilecentral-01.azurewebsites.net"
+                    echo " Deploy em produção concluído!"
+                    echo " Versão : $(Build.SourceBranchName)"
+                    echo " URL    : https://$(APP_NAME_STABLE)-ggh7gchhcrcpghhs.chilecentral-01.azurewebsites.net"
                     echo "================================================"
-                  displayName: "5. Resumo do deploy"
+                  displayName: "4. Resumo do deploy"
