@@ -118,7 +118,10 @@ stages:
     condition: >
       and(
         succeeded(),
-        eq(variables['Build.SourceBranch'], 'refs/heads/main')
+          or(
+            eq(variables['Build.SourceBranch'], 'refs/heads/main'),
+            contains(variables['Build.SourceBranch'], '-alpha.')
+          )
       )
     jobs:
       - deployment: DeployAlpha
