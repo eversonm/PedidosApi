@@ -58,7 +58,4 @@ public static class PedidoEndpoints
     }
 }
 
-// -------------------------------------------------------
-// DTO da requisição
-// -------------------------------------------------------
 record PedidoDto(decimal Valor, bool ClientePremium);
