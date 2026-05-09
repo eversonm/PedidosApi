@@ -16,7 +16,6 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    // Lê o ambiente e a versão do assembly (injetada pelo pipeline)
     var ambiente = builder.Environment.EnvironmentName;
     var versao   = typeof(Program).Assembly
                        .GetName().Version?.ToString() ?? "0.0.0";
