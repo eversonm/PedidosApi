@@ -10,5 +10,5 @@ public static class FeatureFlags
     public const string DescontoPremium = "DescontoPremium";
     public const string NovoCalculoFrete = "NovoCalculoFrete";
     public const string DescontoProgressivo = "DescontoProgressivo";
-    public const string LoginClientePremium = "LoginClientePremium";
+    public const string LoginClientePremiumMax = "LoginClientePremiumMax";
 }
