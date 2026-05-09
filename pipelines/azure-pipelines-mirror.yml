@@ -15,7 +15,7 @@
 #       Valor: [colar o token do GitHub]
 #       Keep this value secret: ON
 #
-#    3. Substituir "MaqBr" pelo seu usuário real do GitHub
+#    3. Substituir "eversonm" pelo seu usuário real do GitHub
 #       na variável githubUser abaixo
 # ============================================================
 
@@ -23,70 +23,68 @@ trigger:
   branches:
     include:
       - main
-      - 'feat/*'
-      - 'fix/*'
+      - "feat/*"
+      - "fix/*"
   tags:
     include:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: "ubuntu-latest"
 
 variables:
-  githubUser: 'MaqBr'
-  githubRepo: 'PedidosApi'
+  githubUser: "eversonm"
+  githubRepo: "PedidosApi"
   # GITHUB_TOKEN é definido como Pipeline Variable secreta
 
 stages:
+  - stage: Mirror
+    displayName: "Mirror — Azure Repos → GitHub"
+    jobs:
+      - job: PushGitHub
+        displayName: "Sincronizar com GitHub"
+        steps:
+          - checkout: self
+            displayName: "1. Checkout completo com histórico"
+            fetchDepth: 0 # ← obrigatório: baixa TODO o histórico
+            persistCredentials: true
 
-- stage: Mirror
-  displayName: 'Mirror — Azure Repos → GitHub'
-  jobs:
-  - job: PushGitHub
-    displayName: 'Sincronizar com GitHub'
-    steps:
+          - script: |
+              echo "================================================"
+              echo " Mirror: Azure Repos → GitHub"
+              echo " Branch/Tag : $(Build.SourceBranchName)"
+              echo " Commit     : $(Build.SourceVersion)"
+              echo "================================================"
+            displayName: "2. Informações do push"
 
-    - checkout: self
-      displayName: '1. Checkout completo com histórico'
-      fetchDepth: 0       # ← obrigatório: baixa TODO o histórico
-      persistCredentials: true
+          - script: |
+              # Configurar identidade do git
+              git config user.email "devops@pedidosapi.com"
+              git config user.name  "Azure DevOps Mirror"
 
-    - script: |
-        echo "================================================"
-        echo " Mirror: Azure Repos → GitHub"
-        echo " Branch/Tag : $(Build.SourceBranchName)"
-        echo " Commit     : $(Build.SourceVersion)"
-        echo "================================================"
-      displayName: '2. Informações do push'
+              # Adicionar o remote do GitHub com autenticação via token
+              git remote add github \
+                https://$(githubUser):$(GITHUB_TOKEN)@github.com/$(githubUser)/$(githubRepo).git
 
-    - script: |
-        # Configurar identidade do git
-        git config user.email "devops@pedidosapi.com"
-        git config user.name  "Azure DevOps Mirror"
+              # Verificar os remotes configurados
+              git remote -v
+            displayName: "3. Configurar remote GitHub"
 
-        # Adicionar o remote do GitHub com autenticação via token
-        git remote add github \
-          https://$(githubUser):$(GITHUB_TOKEN)@github.com/$(githubUser)/$(githubRepo).git
+          - script: |
+              BRANCH="$(Build.SourceBranch)"
 
-        # Verificar os remotes configurados
-        git remote -v
-      displayName: '3. Configurar remote GitHub'
+              if [[ "$BRANCH" == refs/tags/* ]]; then
+                # É uma tag — fazer push da tag
+                TAG="${BRANCH#refs/tags/}"
+                echo "Fazendo push da tag: $TAG"
+                git push github "refs/tags/$TAG"
 
-    - script: |
-        BRANCH="$(Build.SourceBranch)"
+              else
+                # É uma branch — fazer push da branch
+                BRANCH_NAME="${BRANCH#refs/heads/}"
+                echo "Fazendo push da branch: $BRANCH_NAME"
+                git push github "HEAD:refs/heads/$BRANCH_NAME"
+              fi
 
-        if [[ "$BRANCH" == refs/tags/* ]]; then
-          # É uma tag — fazer push da tag
-          TAG="${BRANCH#refs/tags/}"
-          echo "Fazendo push da tag: $TAG"
-          git push github "refs/tags/$TAG"
-
-        else
-          # É uma branch — fazer push da branch
-          BRANCH_NAME="${BRANCH#refs/heads/}"
-          echo "Fazendo push da branch: $BRANCH_NAME"
-          git push github "HEAD:refs/heads/$BRANCH_NAME"
-        fi
-
-        echo "Mirror concluído com sucesso!"
-      displayName: '4. Push para GitHub'
+              echo "Mirror concluído com sucesso!"
+            displayName: "4. Push para GitHub"
