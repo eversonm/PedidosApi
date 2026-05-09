@@ -10,6 +10,7 @@ namespace PedidosApi.Features;
 /// - Flag desligada → comportamento antigo (zero desconto), sem risco para produção
 /// - Flag ligada → nova lógica de negócio ativa
 /// - O serviço não sabe nada sobre porcentagem de rollout — isso é responsabilidade do filtro 
+/// 
 /// </summary>
 public class DescontoService(IFeatureManager featureManager)
 {
