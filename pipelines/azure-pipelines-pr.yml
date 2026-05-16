@@ -12,7 +12,10 @@ pr:
     include:
       - main
   paths:
+    include:
+      - "**" # ← monitorar tudo
     exclude:
+      - "*.md"
       - "**/*.md" # ignora mudanças só em documentação
       - "pipelines/**" # ignora mudanças só em pipelines
 
