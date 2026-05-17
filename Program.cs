@@ -2,6 +2,7 @@ using Microsoft.FeatureManagement;
 using Microsoft.FeatureManagement.FeatureFilters;
 using PedidosApi.Features;
 using PedidosApi.Endpoints;
+using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,8 +18,13 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     var ambiente = builder.Environment.EnvironmentName;
-    var versao   = typeof(Program).Assembly
-                       .GetName().Version?.ToString() ?? "0.0.0";
+    // Depois — lê InformationalVersion (preserva 1.3.0, 1.3.0-beta.1, etc.)
+    var versaoCompleta = typeof(Program).Assembly
+                    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+                    ?.InformationalVersion ?? "0.0.0";
+                    
+    // Remove o hash do commit (+abc123...)
+    var versao = versaoCompleta.Split('+')[0];
 
     options.SwaggerDoc("v1", new()
     {
