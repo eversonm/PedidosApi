@@ -9,6 +9,7 @@ API de pedidos desenvolvida com **.NET 10 Minimal API** para demonstrar na prát
 - [Visão geral](#visão-geral)
 - [Pré-requisitos](#pré-requisitos)
 - [Instalação e execução](#instalação-e-execução)
+- [Docker (Opcional)](#docker-opcional)
 - [Estrutura do projeto](#estrutura-do-projeto)
 - [Endpoints](#endpoints)
 - [Feature Flags](#feature-flags)
@@ -57,6 +58,53 @@ dotnet run
 ```
 
 A API sobe em `http://localhost:5000/swagger`.
+
+---
+
+## Docker (Opcional)
+
+Para facilitar o deploy e a distribuição, você pode empacotar a API em um container Docker.
+
+### 1. Criar a imagem
+
+No diretório raiz do projeto (onde está o `Dockerfile`), execute:
+
+```bash
+docker build -t pedidos-api .
+```
+
+### 2. Rodar o container localmente
+
+```bash
+docker run -d -p 8080:80 --name pedidos-api-container pedidos-api
+```
+A API estará disponível em `http://localhost:8080/swagger`.
+
+### 3. Publicar a imagem
+
+#### DockerHub
+```bash
+# Login no DockerHub
+docker login
+
+# Taggear a imagem (substitua 'seu-usuario' pelo seu nome no DockerHub)
+docker tag pedidos-api seu-usuario/pedidos-api:v1
+
+# Push para o DockerHub
+docker push seu-usuario/pedidos-api:v1
+```
+
+#### Azure Container Registry (ACR)
+```bash
+# Login no Azure
+az acr login --name seuacr
+
+# Taggear para o ACR (substitua 'seuacr' pelo nome do seu registro)
+docker tag pedidos-api seuacr.azurecr.io/pedidos-api:v1
+
+# Push para o ACR
+docker push seuacr.azurecr.io/pedidos-api:v1
+```
 
 ---
 

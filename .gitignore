@@ -103,3 +103,19 @@ coverage/
 # =========================
 *.tmp
 *.temp
+
+# =========================
+# Arquivos de Terraform
+# =========================
+
+*.tfstate
+*.tfplan
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf.json
+*_override.tf.json
+#*.tfvars
+*.tfvars.json
+!example.tfvars

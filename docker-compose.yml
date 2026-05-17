@@ -1,0 +1,15 @@
+services:
+  pedidos-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pedidos-api
+    ports:
+      - "5010:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - FeatureManagement__DescontoPremium=true
+      - FeatureManagement__DescontoProgressivo=false
+      - FeatureManagement__NovoCalculoFrete=true
+    restart: always
