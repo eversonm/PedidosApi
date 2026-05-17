@@ -1,0 +1,12 @@
+**/*.swp
+**/*.swo
+.git
+.gitignore
+.vs
+.vscode
+bin
+obj
+**/bin
+**/obj
+node_modules
+testresults
